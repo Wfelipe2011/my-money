@@ -1,0 +1,278 @@
+generator client {
+    provider      = "prisma-client-js"
+    binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Empresa {
+    id        Int      @id @default(autoincrement())
+    nome      String   @unique
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relações
+    usuarios               UsuarioEmpresa[]
+    CartaoCredito          CartaoCredito[]
+    ContaBancaria          ContaBancaria[]
+    LancamentosCartao      LancamentoCartao[]
+    LancamentosConta       LancamentoConta[]
+    Predicoes              Predicao[]
+    PalavrasChaveCategoria PalavrasChaveCategoria[]
+    ContaRecorrente        ContaRecorrente[]
+    TextoDiario            TextoDiario[]
+
+    @@map("empresas")
+}
+
+model Usuario {
+    id        Int      @id @default(autoincrement())
+    email     String   @unique
+    senha     String
+    nome      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relações com empresas (multi-tenant)
+    empresas UsuarioEmpresa[]
+
+    @@map("usuarios")
+}
+
+model UsuarioEmpresa {
+    id        Int        @id @default(autoincrement())
+    usuarioId Int
+    empresaId Int
+    tipo      TipoAcesso
+
+    usuario Usuario @relation(fields: [usuarioId], references: [id])
+    empresa Empresa @relation(fields: [empresaId], references: [id])
+
+    @@unique([usuarioId, empresaId])
+    @@map("usuarios_empresas")
+}
+
+model CartaoCredito {
+    id             Int      @id @default(autoincrement())
+    empresaId      Int
+    descricao      String // "Nubank", "Itaú", etc.
+    ultimosDigitos String
+    bandeira       String
+    apelido        String?
+    limite         Float?
+    diaFechamento  Int
+    diaVencimento  Int
+    ativo          Boolean  @default(true)
+    createdAt      DateTime @default(now())
+
+    empresa     Empresa            @relation(fields: [empresaId], references: [id])
+    lancamentos LancamentoCartao[]
+
+    @@map("cartoes_credito")
+}
+
+model ContaBancaria {
+    id           Int       @id @default(autoincrement())
+    empresaId    Int
+    banco        String
+    tipoConta    TipoConta
+    numeroConta  String
+    apelido      String?
+    saldoInicial Float     @default(0)
+    ativo        Boolean   @default(true)
+    createdAt    DateTime  @default(now())
+
+    empresa     Empresa           @relation(fields: [empresaId], references: [id])
+    lancamentos LancamentoConta[]
+
+    @@map("contas_bancarias")
+}
+
+// LANÇAMENTOS DE CARTÃO DE CRÉDITO
+model LancamentoCartao {
+    id            Int           @id @default(autoincrement())
+    empresaId     Int
+    cartaoId      Int
+    data          DateTime
+    descricao     String
+    valor         Float
+    numeroParcela Int?
+    totalParcelas Int?
+    categoriaId   Int           @default(10) // Categoria padrão "Outros"
+    diaSemana     DiaSemana
+    empresa       Empresa       @relation(fields: [empresaId], references: [id])
+    cartao        CartaoCredito @relation(fields: [cartaoId], references: [id])
+    categoria     Categoria?    @relation(fields: [categoriaId], references: [id])
+
+    @@index([cartaoId, data])
+    @@map("lancamentos_cartao")
+}
+
+// LANÇAMENTOS DE CONTA BANCÁRIA
+model LancamentoConta {
+    id          Int            @id @default(autoincrement())
+    empresaId   Int
+    contaId     Int
+    data        DateTime
+    descricao   String
+    valor       Float
+    tipo        TipoLancamento // CREDITO | DEBITO
+    categoriaId Int            @default(15) // Categoria padrão "Outros"
+    diaSemana   DiaSemana
+    empresa     Empresa        @relation(fields: [empresaId], references: [id])
+    conta       ContaBancaria  @relation(fields: [contaId], references: [id])
+    categoria   Categoria?     @relation(fields: [categoriaId], references: [id])
+
+    @@index([contaId, data])
+    @@map("lancamentos_conta")
+}
+
+model Categoria {
+    id      Int     @id @default(autoincrement())
+    nome    String
+    cor     String
+    icone   String?
+    paiId   Int?
+    sistema Boolean @default(false)
+
+    pai                    Categoria?               @relation("CategoriaParaCategoria", fields: [paiId], references: [id])
+    filhos                 Categoria[]              @relation("CategoriaParaCategoria")
+    lancamentosCartao      LancamentoCartao[]
+    lancamentosConta       LancamentoConta[]
+    PalavrasChaveCategoria PalavrasChaveCategoria[]
+    predicoes              Predicao[]
+    ContaRecorrente        ContaRecorrente[]
+
+    @@map("categorias")
+}
+
+model PalavrasChaveCategoria {
+    id          Int    @id @default(autoincrement())
+    empresaId   Int
+    categoriaId Int
+    palavra     String
+
+    categoria Categoria @relation(fields: [categoriaId], references: [id])
+    empresa   Empresa   @relation(fields: [empresaId], references: [id])
+
+    @@map("palavras_chave_categorias")
+}
+
+// TABELA DE PREDIÇÕES
+model Predicao {
+    id             Int          @id @default(autoincrement())
+    empresaId      Int
+    categoriaId    Int
+    data           DateTime // Mês e ano da predição (ex: 2023-08-01 para agosto de 2023)
+    origem         Origem // MANUAL | AUTOMATICA
+    valorPrevisto  Float
+    valorRealizado Float? // Preenchido quando o mês terminar
+    confianca      Float? // Nível de confiança da predição (0-1)
+    tipo           TipoPredicao // GASTO_RECORRENTE | PARCELAS | VARIAVEL
+    dataPredicao   DateTime     @default(now())
+    isAtivo        Boolean      @default(true)
+    empresa        Empresa      @relation(fields: [empresaId], references: [id])
+    categoria      Categoria    @relation(fields: [categoriaId], references: [id])
+
+    @@map("predicoes")
+}
+
+// CONTAS RECORRENTES IDENTIFICADAS
+model ContaRecorrente {
+    id            Int                   @id @default(autoincrement())
+    empresaId     Int
+    categoriaId   Int
+    descricao     String
+    valor         Float
+    tipo          TipoLancamento
+    diaVencimento Int?
+    frequencia    FrequenciaRecorrencia // MENSAL | BIMESTRAL | TRIMESTRAL
+    ativa         Boolean               @default(true)
+    dataInicio    DateTime              @default(now())
+    dataFim       DateTime?
+    confianca     Float                 @default(1.0) // Confiança na detecção
+
+    empresa   Empresa   @relation(fields: [empresaId], references: [id])
+    categoria Categoria @relation(fields: [categoriaId], references: [id])
+
+    @@map("contas_recorrentes")
+}
+
+// NOVA TABELA: TEXTO DIÁRIO
+model TextoDiario {
+    id           Int          @id @default(autoincrement())
+    empresaId    Int
+    data         DateTime // Data do texto (um por dia)
+    textoCurto   String // Texto curto para exibição rápida
+    textoLongo   String? // Texto mais detalhado (opcional)
+    tipoMensagem TipoMensagem // ALERTA | PREVISAO | HUMOR | DICA
+    insights     String? // Insights específicos do modelo preditivo
+    createdAt    DateTime     @default(now())
+
+    empresa Empresa @relation(fields: [empresaId], references: [id])
+
+    @@unique([empresaId, data])
+    @@map("textos_diarios")
+}
+
+enum TipoAcesso {
+    PROPRIETARIO
+    ADMIN
+    MEMBRO
+}
+
+enum TipoConta {
+    CORRENTE
+    POUPANCA
+    INVESTIMENTO
+}
+
+enum TipoLancamento {
+    CREDITO
+    DEBITO
+}
+
+enum TipoPredicao {
+    GASTO_RECORRENTE
+    PARCELAS
+    VARIAVEL
+    RENDA
+}
+
+enum FrequenciaRecorrencia {
+    MENSAL
+    BIMESTRAL
+    TRIMESTRAL
+    SEMESTRAL
+    ANUAL
+}
+
+// NOVO ENUM: DIA DA SEMANA EM PORTUGUÊS
+enum DiaSemana {
+    DOMINGO
+    SEGUNDA
+    TERCA
+    QUARTA
+    QUINTA
+    SEXTA
+    SABADO
+}
+
+// NOVO ENUM: TIPO DE MENSAGEM
+enum TipoMensagem {
+    ALERTA
+    PREVISAO
+    HUMOR
+    DICA
+    MOTIVACIONAL
+    INSIGHT
+}
+
+// NOVO ENUM: ORIGEM DA PREDIÇÃO
+enum Origem {
+    MANUAL
+    AUTOMATICA
+}
