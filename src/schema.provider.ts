@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { IInvoiceSchema } from './interfaces';
 import { Invoice, invoiceSchema } from './invoice.schema';
+import { transactionCategorySchema } from './category.schema';
 
 @Injectable()
 export class SchemaProvider {
@@ -10,6 +11,10 @@ export class SchemaProvider {
     this.registerSchema({
       name: 'invoice',
       schema: invoiceSchema,
+    });
+    this.registerSchema({
+      name: 'transactionCategory',
+      schema: transactionCategorySchema,
     });
   }
 

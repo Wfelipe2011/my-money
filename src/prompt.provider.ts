@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { IPromptTemplate } from './interfaces';
 import { defaultPromptTemplate } from './default.prompt';
+import { transactionCategoryTemplate } from './category.prompt';
 
 @Injectable()
 export class PromptProvider {
@@ -10,6 +11,11 @@ export class PromptProvider {
     this.registerPrompt({
       name: 'default',
       template: defaultPromptTemplate,
+    });
+
+    this.registerPrompt({
+      name: 'transactionCategory',
+      template: transactionCategoryTemplate,
     });
   }
 

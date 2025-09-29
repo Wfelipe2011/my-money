@@ -11,12 +11,6 @@ import fs from 'fs';
 export class AppController {
   constructor(private readonly httpService: HttpService, private readonly appService: AppService) { }
 
-  @Post()
-  async test(@Body() body: { text: string }) {
-    const lancamentos = await this.appService.saveStatements(body.text, 2);
-    return lancamentos;
-  }
-
   @Post('fatura/:cardId/upload')
   @UseInterceptors(
     FileInterceptor('file', {
